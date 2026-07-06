@@ -73,36 +73,25 @@ class SmartInputPlugin(private val project: Project) {
         })
 
         // Listen for tool window changes (Terminal focus)
-        messageBusConnection?.subscribe(ToolWindowManagerListener.TOPIC, terminalDetector)
-
-        // Listen for caret movements
-        setupCaretListener()
+        messageBusConnection?.subscribe(ToolWindowManagerListener.TOPIC, object : ToolWindowManagerListener {
+            override fun stateChanged(toolWindowManager: ToolWindowManager) {
+                terminalDetector.stateChanged(toolWindowManager)
+                // When terminal gains focus, trigger switch directly (no editor available)
+                if (terminalDetector.isActive(null, null)) {
+                    doSwitch(InputMethodRecommendation.ENGLISH, null)
+                }
+            }
+        })
 
         logger.info("Event listeners registered")
     }
 
-    private fun setupCaretListener() {
-        val connection = project.messageBus.connect()
-        connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
-            override fun selectionChanged(event: FileEditorManagerEvent) {
-                event.manager.selectedTextEditor?.let { editor ->
-                    addCaretListenerToEditor(editor)
-                }
-            }
-        })
-    }
-
     private fun setupEditorListeners(editor: Editor) {
-        addCaretListenerToEditor(editor)
-        addDocumentListenerToEditor(editor)
-    }
-
-    private fun addCaretListenerToEditor(editor: Editor) {
         // Remove existing listeners to avoid duplicates
         editor.caretModel.removeCaretListener(caretListener)
-
-        // Add new caret listener
+        // Add caret listener
         editor.caretModel.addCaretListener(caretListener)
+        addDocumentListenerToEditor(editor)
     }
 
     private fun addDocumentListenerToEditor(editor: Editor) {
@@ -152,31 +141,29 @@ class SmartInputPlugin(private val project: Project) {
             // Find the active detector
             val activeDetector = detectors.firstOrNull { it.isActive(editor, file) }
 
-            if (activeDetector != null) {
-                val recommendation = activeDetector.getRecommendedInputMethod()
-                when (recommendation) {
-                    InputMethodRecommendation.ENGLISH -> {
-                        inputMethodManager.switchToEnglish()
-                        cursorIndicator.updateCursorIndicator(editor, InputMethodManager.InputMethod.ENGLISH)
-                    }
-                    InputMethodRecommendation.CHINESE -> {
-                        inputMethodManager.switchToChinese()
-                        cursorIndicator.updateCursorIndicator(editor, InputMethodManager.InputMethod.CHINESE)
-                    }
-                    InputMethodRecommendation.KEEP_CURRENT -> {
-                        // Do nothing, keep current input method
-                    }
-                    null -> {
-                        // No recommendation, keep current input method
-                    }
-                }
-            } else {
-                // No detector matched — cursor is in regular code, switch to English
-                inputMethodManager.switchToEnglish()
-                cursorIndicator.updateCursorIndicator(editor, InputMethodManager.InputMethod.ENGLISH)
-            }
+            val recommendation = activeDetector?.getRecommendedInputMethod()
+                ?: InputMethodRecommendation.ENGLISH // No detector matched — regular code
+            doSwitch(recommendation, editor)
         } catch (e: Exception) {
             logger.error("Error analyzing context", e)
+        }
+    }
+
+    private fun doSwitch(recommendation: InputMethodRecommendation, editor: Editor?) {
+        if (!isEnabled || !settings.state.enabled) return
+
+        when (recommendation) {
+            InputMethodRecommendation.ENGLISH -> {
+                inputMethodManager.switchToEnglish()
+                editor?.let { cursorIndicator.updateCursorIndicator(it, InputMethodManager.InputMethod.ENGLISH) }
+            }
+            InputMethodRecommendation.CHINESE -> {
+                inputMethodManager.switchToChinese()
+                editor?.let { cursorIndicator.updateCursorIndicator(it, InputMethodManager.InputMethod.CHINESE) }
+            }
+            InputMethodRecommendation.KEEP_CURRENT -> {
+                // Do nothing, keep current input method
+            }
         }
     }
 
