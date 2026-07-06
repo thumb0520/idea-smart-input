@@ -17,9 +17,9 @@
 
 - IntelliJ IDEA 2024.1 及以上版本
 - macOS 系统
-- [macism](https://github.com/laishulu/macism)（推荐，通过 `brew install macism` 安装）
+- Python 3（macOS 自带，用于调用系统 API 切换输入法）
 
-> 如果未安装 macism，插件会回退到 AppleScript 方式，但可能需要授予辅助功能权限。
+> 插件默认使用 macOS Carbon API 切换输入法，无需安装额外工具，无需辅助功能权限。如果已安装 [macism](https://github.com/laishulu/macism)，会优先使用。
 
 ## 🚀 安装
 
