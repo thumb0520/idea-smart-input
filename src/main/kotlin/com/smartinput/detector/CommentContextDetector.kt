@@ -1,6 +1,7 @@
 package com.smartinput.detector
 
 import com.intellij.lang.Language
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.vfs.VirtualFile
@@ -35,15 +36,14 @@ class CommentContextDetector : ContextDetector {
     private fun isInComment(editor: Editor): Boolean {
         try {
             val project = editor.project ?: return false
-            val psiFile = PsiDocumentManager.getInstance(project).getPsiFile(editor.document) ?: return false
-            val offset = editor.caretModel.offset
+            return ApplicationManager.getApplication().runReadAction<Boolean> {
+                val psiFile = PsiDocumentManager.getInstance(project).getPsiFile(editor.document) ?: return@runReadAction false
+                val offset = editor.caretModel.offset
+                if (offset < 0 || offset > psiFile.textLength) return@runReadAction false
 
-            if (offset < 0 || offset > psiFile.textLength) return false
-
-            val element = psiFile.findElementAt(offset) ?: return false
-
-            // Check if the element is a comment
-            return isCommentElement(element)
+                val element = psiFile.findElementAt(offset) ?: return@runReadAction false
+                isCommentElement(element)
+            }
         } catch (e: Exception) {
             logger.debug("Error checking comment context", e)
             return false
