@@ -13,12 +13,14 @@ import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.wm.WindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.util.messages.MessageBusConnection
 import com.smartinput.detector.*
 import com.smartinput.service.CursorIndicatorService
 import com.smartinput.service.InputMethodManager
 import com.smartinput.settings.SmartInputSettings
+import java.awt.event.WindowFocusListener
 import javax.swing.Timer
 
 /**
@@ -46,6 +48,7 @@ class SmartInputPlugin(private val project: Project) {
     ).sortedByDescending { it.getPriority() }
 
     private var messageBusConnection: MessageBusConnection? = null
+    private var windowFocusListener: WindowFocusListener? = null
     private var isEnabled = true
     private var switchTimer: Timer? = null
     private var documentListener: DocumentListener? = null
@@ -83,6 +86,20 @@ class SmartInputPlugin(private val project: Project) {
                 }
             }
         })
+
+        // Listen for project window focus (triggers when switching between projects)
+        WindowManager.getInstance().getFrame(project)?.let { frame ->
+            windowFocusListener = object : WindowFocusListener {
+                override fun windowGainedFocus(e: java.awt.event.WindowEvent) {
+                    val editor = FileEditorManager.getInstance(project).selectedTextEditor
+                    val file = FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
+                    editor?.let { setupEditorListeners(it) }
+                    analyzeAndSwitch(editor, file)
+                }
+                override fun windowLostFocus(e: java.awt.event.WindowEvent) {}
+            }
+            frame.addWindowFocusListener(windowFocusListener!!)
+        }
 
         logger.info("Event listeners registered")
     }
@@ -196,6 +213,9 @@ class SmartInputPlugin(private val project: Project) {
 
     fun dispose() {
         switchTimer?.stop()
+        windowFocusListener?.let { listener ->
+            WindowManager.getInstance().getFrame(project)?.removeWindowFocusListener(listener)
+        }
         messageBusConnection?.disconnect()
         cursorIndicator.removeAllIndicators()
         logger.info("SmartInputPlugin disposed")
