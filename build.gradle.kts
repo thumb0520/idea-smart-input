@@ -1,7 +1,7 @@
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "2.1.0"
-    id("org.jetbrains.intellij") version "1.17.4"
+    id("org.jetbrains.intellij.platform") version "2.5.0"
 }
 
 group = "com.smartinput"
@@ -12,15 +12,15 @@ repositories {
     maven { url = uri("https://maven.aliyun.com/repository/public") }
     maven { url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/") }
     mavenCentral()
+    intellijPlatform {
+        defaultRepositories()
+    }
 }
 
 dependencies {
-    // Add your dependencies here
-}
-
-intellij {
-    version.set("2025.3")
-    type.set("IU")
+    intellijPlatform {
+        intellijIdeaUltimate("2025.3")
+    }
 }
 
 tasks {
@@ -29,7 +29,9 @@ tasks {
         targetCompatibility = "17"
     }
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        kotlinOptions.jvmTarget = "17"
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
     patchPluginXml {
         sinceBuild.set("241")

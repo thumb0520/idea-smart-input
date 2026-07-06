@@ -5,6 +5,9 @@ pluginManagement {
         gradlePluginPortal()
         mavenCentral()
     }
+    plugins {
+        id("org.jetbrains.intellij.platform") version "2.5.0"
+    }
 }
 
 rootProject.name = "smart-plugin"
