@@ -49,6 +49,7 @@ class SmartInputPlugin(private val project: Project) {
     private var isEnabled = true
     private var switchTimer: Timer? = null
     private var documentListener: DocumentListener? = null
+    private var documentListenerDocument: com.intellij.openapi.editor.Document? = null
 
     init {
         logger.info("SmartInputPlugin initialized for project: ${project.name}")
@@ -95,8 +96,10 @@ class SmartInputPlugin(private val project: Project) {
     }
 
     private fun addDocumentListenerToEditor(editor: Editor) {
-        // Remove existing listener to avoid duplicates
-        documentListener?.let { editor.document.removeDocumentListener(it) }
+        // Remove existing listener from the document it was registered on
+        documentListener?.let { listener ->
+            documentListenerDocument?.removeDocumentListener(listener)
+        }
         documentListener = object : DocumentListener {
             override fun documentChanged(event: DocumentEvent) {
                 val fileEditorManager = FileEditorManager.getInstance(project)
@@ -107,6 +110,7 @@ class SmartInputPlugin(private val project: Project) {
                 }
             }
         }
+        documentListenerDocument = editor.document
         editor.document.addDocumentListener(documentListener!!)
     }
 
