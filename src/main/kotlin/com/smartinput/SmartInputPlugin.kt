@@ -1,0 +1,195 @@
+package com.smartinput
+
+import com.intellij.openapi.components.Service
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.event.CaretEvent
+import com.intellij.openapi.editor.event.CaretListener
+import com.intellij.openapi.editor.event.DocumentEvent
+import com.intellij.openapi.editor.event.DocumentListener
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.FileEditorManagerEvent
+import com.intellij.openapi.fileEditor.FileEditorManagerListener
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.wm.ex.ToolWindowManagerListener
+import com.intellij.util.messages.MessageBusConnection
+import com.smartinput.detector.*
+import com.smartinput.service.CursorIndicatorService
+import com.smartinput.service.InputMethodManager
+import com.smartinput.settings.SmartInputSettings
+
+/**
+ * Main plugin service that coordinates context detection and input method switching.
+ */
+@Service(Service.Level.PROJECT)
+class SmartInputPlugin(private val project: Project) {
+    private val logger = Logger.getInstance(SmartInputPlugin::class.java)
+    private val inputMethodManager = InputMethodManager.getInstance()
+    private val cursorIndicator = CursorIndicatorService.getInstance()
+    private val settings = SmartInputSettings.getInstance()
+
+    // Context detectors
+    private val commentDetector = CommentContextDetector()
+    private val commitDetector = CommitMessageDetector()
+    private val terminalDetector = TerminalFocusDetector().apply { setProject(project) }
+    private val vimDetector = VimModeDetector()
+
+    // All detectors sorted by priority
+    private val detectors: List<ContextDetector> = listOf(
+        terminalDetector,
+        vimDetector,
+        commitDetector,
+        commentDetector
+    ).sortedByDescending { it.getPriority() }
+
+    private var messageBusConnection: MessageBusConnection? = null
+    private var isEnabled = true
+
+    init {
+        logger.info("SmartInputPlugin initialized for project: ${project.name}")
+        setupListeners()
+    }
+
+    private fun setupListeners() {
+        messageBusConnection = project.messageBus.connect()
+
+        // Listen for editor changes
+        messageBusConnection?.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
+            override fun fileOpened(source: FileEditorManager, file: VirtualFile) {
+                source.getSelectedTextEditor()?.let { setupEditorListeners(it) }
+            }
+
+            override fun selectionChanged(event: FileEditorManagerEvent) {
+                event.manager.selectedTextEditor?.let { editor ->
+                    setupEditorListeners(editor)
+                    analyzeAndSwitch(editor, event.newFile)
+                }
+            }
+        })
+
+        // Listen for tool window changes (Terminal focus)
+        messageBusConnection?.subscribe(ToolWindowManagerListener.TOPIC, terminalDetector)
+
+        // Listen for caret movements
+        setupCaretListener()
+
+        logger.info("Event listeners registered")
+    }
+
+    private fun setupCaretListener() {
+        val connection = project.messageBus.connect()
+        connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
+            override fun selectionChanged(event: FileEditorManagerEvent) {
+                event.manager.selectedTextEditor?.let { editor ->
+                    addCaretListenerToEditor(editor)
+                }
+            }
+        })
+    }
+
+    private fun setupEditorListeners(editor: Editor) {
+        addCaretListenerToEditor(editor)
+        addDocumentListenerToEditor(editor)
+    }
+
+    private fun addCaretListenerToEditor(editor: Editor) {
+        // Remove existing listeners to avoid duplicates
+        editor.caretModel.removeCaretListener(caretListener)
+
+        // Add new caret listener
+        editor.caretModel.addCaretListener(caretListener)
+    }
+
+    private fun addDocumentListenerToEditor(editor: Editor) {
+        editor.document.addDocumentListener(object : DocumentListener {
+            override fun documentChanged(event: DocumentEvent) {
+                // Re-analyze when document changes
+                val fileEditorManager = FileEditorManager.getInstance(project)
+                val currentEditor = fileEditorManager.selectedTextEditor
+                if (currentEditor == editor) {
+                    val file = fileEditorManager.selectedFiles.firstOrNull()
+                    analyzeAndSwitch(editor, file)
+                }
+            }
+        })
+    }
+
+    private val caretListener = object : CaretListener {
+        override fun caretPositionChanged(event: CaretEvent) {
+            val editor = event.editor
+            val fileEditorManager = FileEditorManager.getInstance(project)
+            val file = fileEditorManager.selectedFiles.firstOrNull()
+            analyzeAndSwitch(editor, file)
+        }
+    }
+
+    /**
+     * Analyze the current context and switch input method if needed.
+     */
+    fun analyzeAndSwitch(editor: Editor?, file: VirtualFile?) {
+        if (!isEnabled || !settings.state.enabled) return
+        if (editor == null) return
+
+        try {
+            // Find the active detector
+            val activeDetector = detectors.firstOrNull { it.isActive(editor, file) }
+
+            if (activeDetector != null) {
+                val recommendation = activeDetector.getRecommendedInputMethod()
+                when (recommendation) {
+                    InputMethodRecommendation.ENGLISH -> {
+                        inputMethodManager.switchToEnglish()
+                        cursorIndicator.updateCursorIndicator(editor, InputMethodManager.InputMethod.ENGLISH)
+                    }
+                    InputMethodRecommendation.CHINESE -> {
+                        inputMethodManager.switchToChinese()
+                        cursorIndicator.updateCursorIndicator(editor, InputMethodManager.InputMethod.CHINESE)
+                    }
+                    InputMethodRecommendation.KEEP_CURRENT -> {
+                        // Do nothing, keep current input method
+                    }
+                    null -> {
+                        // No recommendation, keep current input method
+                    }
+                }
+            } else {
+                // No detector matched — cursor is in regular code, switch to English
+                inputMethodManager.switchToEnglish()
+                cursorIndicator.updateCursorIndicator(editor, InputMethodManager.InputMethod.ENGLISH)
+            }
+        } catch (e: Exception) {
+            logger.error("Error analyzing context", e)
+        }
+    }
+
+    /**
+     * Toggle plugin enabled state.
+     */
+    fun toggleEnabled() {
+        isEnabled = !isEnabled
+        logger.info("SmartInputPlugin ${if (isEnabled) "enabled" else "disabled"}")
+    }
+
+    /**
+     * Check if plugin is enabled.
+     */
+    fun isEnabled(): Boolean = isEnabled && settings.state.enabled
+
+    /**
+     * Get the terminal focus detector for external access.
+     */
+    fun getTerminalDetector(): TerminalFocusDetector = terminalDetector
+
+    /**
+     * Get the vim mode detector for external access.
+     */
+    fun getVimDetector(): VimModeDetector = vimDetector
+
+    fun dispose() {
+        messageBusConnection?.disconnect()
+        cursorIndicator.removeAllIndicators()
+        logger.info("SmartInputPlugin disposed")
+    }
+}

@@ -1,0 +1,75 @@
+<idea-plugin>
+    <id>com.smartinput</id>
+    <name>Smart Input</name>
+    <vendor>SmartInput</vendor>
+    <description><![CDATA[
+        <p>Smart Input 是一款为中文开发者设计的 IntelliJ IDEA 输入法智能切换插件。它能根据编辑器上下文自动切换中英文输入法，告别手动切换的烦恼，让你专注于代码编写。</p>
+
+        <h2>✨ 功能特性</h2>
+        <ul>
+            <li><b>注释中自动切换中文</b> — 当光标移入注释区域（单行注释、多行注释、文档注释）时，自动切换到中文输入法，方便编写中文注释</li>
+            <li><b>Commit 信息自动切换中文</b> — 在 Git 提交信息编辑器中自动切换到中文输入法，支持 COMMIT_EDITMSG、MERGE_MSG 等文件识别</li>
+            <li><b>Terminal 自动切换英文</b> — 当终端窗口获得焦点时，自动切换到英文输入法，避免命令输入错误</li>
+            <li><b>IdeaVim 命令模式切换英文</b> — 进入 IdeaVim 命令模式时自动切换到英文输入法（需安装 IdeaVim 插件）</li>
+            <li><b>光标颜色指示器</b> — 通过不同颜色的光标直观显示当前输入法状态：英文（蓝色）、中文（红色）、Caps Lock（橙色）</li>
+        </ul>
+
+        <h2>⚙️ 可配置项</h2>
+        <p>插件提供丰富的配置选项，可在 <b>Settings → Tools → Smart Input</b> 中进行设置：</p>
+        <ul>
+            <li>独立开关各项上下文检测功能</li>
+            <li>自定义中英文输入法 ID（默认适配 macOS 系统自带输入法）</li>
+            <li>自定义光标颜色指示器的颜色</li>
+        </ul>
+
+        <h2>⌨️ 快捷键</h2>
+        <p><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>I</kbd> — 快速开关插件（也可通过 Tools 菜单操作）</p>
+
+        <h2>📋 系统要求</h2>
+        <ul>
+            <li>IntelliJ IDEA 2024.1 及以上版本</li>
+            <li>macOS 系统（当前默认输入法 ID 为 macOS 格式，其他系统需手动配置）</li>
+        </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <!-- Optional dependency on IdeaVim -->
+    <depends optional="true" config-file="vim-support.xml">IdeaVIM</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Application level services -->
+        <applicationService
+            serviceImplementation="com.smartinput.service.InputMethodManager"/>
+        <applicationService
+            serviceImplementation="com.smartinput.service.CursorIndicatorService"/>
+        <applicationService
+            serviceImplementation="com.smartinput.settings.SmartInputSettings"/>
+
+        <!-- Project level services -->
+        <projectService
+            serviceImplementation="com.smartinput.SmartInputPlugin"/>
+
+        <!-- Settings configuration page -->
+        <applicationConfigurable
+            parentId="tools"
+            instance="com.smartinput.ui.SmartInputSettingsConfigurable"
+            id="com.smartinput.settings"
+            displayName="Smart Input"/>
+
+        <!-- Eagerly initialize plugin on project open -->
+        <postStartupActivity
+            implementation="com.smartinput.SmartInputStartupActivity"/>
+    </extensions>
+
+    <actions>
+        <!-- Toggle plugin on/off -->
+        <action id="SmartInput.Toggle"
+                class="com.smartinput.actions.TogglePluginAction"
+                text="Toggle Smart Input"
+                description="Enable or disable Smart Input plugin">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt I"/>
+        </action>
+    </actions>
+</idea-plugin>
