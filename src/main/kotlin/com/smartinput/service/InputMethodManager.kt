@@ -38,7 +38,7 @@ class InputMethodManager {
         }
     }
 
-    fun getCurrentInputMethod(): InputMethod = currentInputMethod
+    fun getCurrentInputMethod(): InputMethod = currentInputMethod ?: InputMethod.ENGLISH
 
     private fun switchInputMethod(inputMethodId: String) {
         try {
