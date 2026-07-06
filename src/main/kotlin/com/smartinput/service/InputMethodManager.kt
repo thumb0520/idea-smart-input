@@ -7,6 +7,7 @@ import java.io.IOException
 
 class InputMethodManager {
     private val logger = Logger.getInstance(InputMethodManager::class.java)
+    @Volatile
     private var currentInputMethod: InputMethod = InputMethod.ENGLISH
 
     enum class InputMethod {
@@ -14,21 +15,27 @@ class InputMethodManager {
     }
 
     fun switchToEnglish() {
+        if (currentInputMethod == InputMethod.ENGLISH) return
         val settings = SmartInputSettings.getInstance()
         if (!settings.state.enabled) return
 
-        switchInputMethod(settings.state.englishInputMethodId)
         currentInputMethod = InputMethod.ENGLISH
-        logger.info("Switched to English input method")
+        ApplicationManager.getApplication().executeOnPooledThread {
+            switchInputMethod(settings.state.englishInputMethodId)
+            logger.info("Switched to English input method")
+        }
     }
 
     fun switchToChinese() {
+        if (currentInputMethod == InputMethod.CHINESE) return
         val settings = SmartInputSettings.getInstance()
         if (!settings.state.enabled) return
 
-        switchInputMethod(settings.state.chineseInputMethodId)
         currentInputMethod = InputMethod.CHINESE
-        logger.info("Switched to Chinese input method")
+        ApplicationManager.getApplication().executeOnPooledThread {
+            switchInputMethod(settings.state.chineseInputMethodId)
+            logger.info("Switched to Chinese input method")
+        }
     }
 
     fun getCurrentInputMethod(): InputMethod = currentInputMethod

@@ -19,6 +19,7 @@ import com.smartinput.detector.*
 import com.smartinput.service.CursorIndicatorService
 import com.smartinput.service.InputMethodManager
 import com.smartinput.settings.SmartInputSettings
+import javax.swing.Timer
 
 /**
  * Main plugin service that coordinates context detection and input method switching.
@@ -46,6 +47,8 @@ class SmartInputPlugin(private val project: Project) {
 
     private var messageBusConnection: MessageBusConnection? = null
     private var isEnabled = true
+    private var switchTimer: Timer? = null
+    private var documentListener: DocumentListener? = null
 
     init {
         logger.info("SmartInputPlugin initialized for project: ${project.name}")
@@ -103,9 +106,10 @@ class SmartInputPlugin(private val project: Project) {
     }
 
     private fun addDocumentListenerToEditor(editor: Editor) {
-        editor.document.addDocumentListener(object : DocumentListener {
+        // Remove existing listener to avoid duplicates
+        documentListener?.let { editor.document.removeDocumentListener(it) }
+        documentListener = object : DocumentListener {
             override fun documentChanged(event: DocumentEvent) {
-                // Re-analyze when document changes
                 val fileEditorManager = FileEditorManager.getInstance(project)
                 val currentEditor = fileEditorManager.selectedTextEditor
                 if (currentEditor == editor) {
@@ -113,7 +117,8 @@ class SmartInputPlugin(private val project: Project) {
                     analyzeAndSwitch(editor, file)
                 }
             }
-        })
+        }
+        editor.document.addDocumentListener(documentListener!!)
     }
 
     private val caretListener = object : CaretListener {
@@ -127,8 +132,19 @@ class SmartInputPlugin(private val project: Project) {
 
     /**
      * Analyze the current context and switch input method if needed.
+     * Uses debouncing to avoid excessive switching on rapid caret movements.
      */
     fun analyzeAndSwitch(editor: Editor?, file: VirtualFile?) {
+        if (!isEnabled || !settings.state.enabled) return
+        if (editor == null) return
+
+        switchTimer?.stop()
+        switchTimer = Timer(100) {
+            doAnalyzeAndSwitch(editor, file)
+        }.apply { isRepeats = false; start() }
+    }
+
+    private fun doAnalyzeAndSwitch(editor: Editor?, file: VirtualFile?) {
         if (!isEnabled || !settings.state.enabled) return
         if (editor == null) return
 
@@ -188,6 +204,7 @@ class SmartInputPlugin(private val project: Project) {
     fun getVimDetector(): VimModeDetector = vimDetector
 
     fun dispose() {
+        switchTimer?.stop()
         messageBusConnection?.disconnect()
         cursorIndicator.removeAllIndicators()
         logger.info("SmartInputPlugin disposed")
