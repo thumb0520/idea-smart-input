@@ -8,7 +8,7 @@ import java.io.IOException
 class InputMethodManager {
     private val logger = Logger.getInstance(InputMethodManager::class.java)
     @Volatile
-    private var currentInputMethod: InputMethod = InputMethod.ENGLISH
+    private var currentInputMethod: InputMethod? = null
 
     enum class InputMethod {
         ENGLISH, CHINESE
